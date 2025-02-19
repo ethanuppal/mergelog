@@ -14,6 +14,7 @@
 use core::str;
 use std::{
     collections::HashMap,
+    env,
     error::Error,
     fmt, fs,
     io::{self, Write},
@@ -139,6 +140,11 @@ struct Opts {
     /// changelog sections in order
     #[argh(option, short = 's')]
     section: Vec<String>,
+
+    /// whether the link to pull requests in the changelog should be put at the
+    /// start of each entry
+    #[argh(switch)]
+    link_at_start: bool,
 
     /// directory containing changelogs and a mergelog.toml
     #[argh(positional)]
@@ -429,7 +435,7 @@ fn resolve_changelog_pr_interactive(
             eprintln!("├─ {}: Is it one of:", "help".cyan());
             for guessed_pr in guessed_prs {
                 eprintln!(
-                    "│        * {}: {}",
+                    "│          {}: {}",
                     guessed_pr.link, guessed_pr.title
                 );
             }
@@ -453,6 +459,16 @@ fn resolve_changelog_pr_interactive(
 
 fn main() -> Result<()> {
     let opts = argh::from_env::<Opts>();
+
+    if opts.section.is_empty() {
+        let command = env::args().collect::<Vec<_>>().join(" ");
+        return Err(miette!(
+            code = "main::missing_sections",
+            labels = vec![LabeledSpan::at(0..command.len(), "Missing section option(s)")],
+            help = "Provide a changelog section by passing the option `-s`/--section` multiple times, e.g., `-s Added`.\n\nThese sections correspond to markdown headings in the changelog files, and the order in which you pass the sections is the order in which they will be generated in the changelog.", 
+            "No changelog sections provided"
+        ).with_source_code(command));
+    }
 
     let repo_url = if let Some(repo_url) = opts.repo_url {
         repo_url
@@ -598,7 +614,13 @@ fn main() -> Result<()> {
             contents.sort_by(|lhs, rhs| lhs.1.cmp(&rhs.1));
             println!("{} {}", "#".repeat(*level as usize), section);
             for (content, link) in contents {
-                println!("{} ([{}]({}))", content.trim(), link, link);
+                let item = content.trim();
+                let item = item.strip_prefix("-").unwrap_or(item).trim();
+                if opts.link_at_start {
+                    println!(" - ({}) {}", link, item);
+                } else {
+                    println!(" - {} ({})", item, link);
+                }
             }
         }
     }

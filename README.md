@@ -22,7 +22,7 @@ mergelog my/changelog/directory
 Here's the full `--help` output:
 
 ```
-Usage: mergelog <changelog_directory> [--repo <repo>] [--host <host>] [-s <section...>]
+Usage: mergelog <changelog_directory> [--repo <repo>] [--host <host>] [-s <section...>] [--link-at-start]
 
 Merges changelog files into a single changelog
 
@@ -35,5 +35,7 @@ Options:
                     omit to infer from the current repo
   --host            the repository host; omit to infer from the repo URL
   -s, --section     changelog sections in order
+  --link-at-start   whether the link to pull requests in the changelog should be
+                    put at the start of each entry
   --help, help      display usage information
 ```
