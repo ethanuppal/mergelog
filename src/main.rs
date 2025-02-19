@@ -13,7 +13,7 @@
 
 use core::str;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     env,
     error::Error,
     fmt, fs,
@@ -24,7 +24,7 @@ use std::{
 };
 
 use argh::FromArgs;
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use edit_distance::edit_distance;
 use indicatif::{ProgressBar, ProgressStyle};
 use miette::{
@@ -32,6 +32,7 @@ use miette::{
     Report, Result, SourceOffset,
 };
 use owo_colors::OwoColorize;
+use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use url::Url;
 
@@ -141,14 +142,27 @@ struct Opts {
     #[argh(option, short = 's')]
     section: Vec<String>,
 
-    /// whether the link to pull requests in the changelog should be put at the
-    /// start of each entry
-    #[argh(switch)]
-    link_at_start: bool,
+    /// path to optional config file
+    #[argh(option)]
+    config: Option<Utf8PathBuf>,
 
     /// directory containing changelogs and a mergelog.toml
     #[argh(positional)]
     changelog_directory: Utf8PathBuf,
+}
+
+fn default_config_format() -> String {
+    "{item} ({link_name})".into()
+}
+
+#[derive(Deserialize)]
+struct Config {
+    #[serde(default)]
+    sections: Vec<String>,
+    #[serde(default = "default_config_format")]
+    format: String,
+    #[serde(default, rename = "short-links")]
+    short_links: bool,
 }
 
 struct PullRequest {
@@ -247,8 +261,8 @@ fn parse_owner_and_name(
 }
 
 fn fetch_merge_requests(
-    owner: String,
-    name: String,
+    owner: &str,
+    name: &str,
     host: RepositoryHost,
 ) -> Result<Vec<PullRequest>> {
     match host {
@@ -388,15 +402,49 @@ fn guess_pull_request<'a>(
     )
 }
 
+#[derive(Clone)]
+struct Link {
+    shorthand: String,
+    full: String,
+    is_pull_request: bool,
+}
+
+fn make_pull_request_link(
+    id: String,
+    link: String,
+    host: RepositoryHost,
+    repo_owner: &str,
+    repo_name: &str,
+) -> Link {
+    let full_link = match host {
+        RepositoryHost::GitHub => todo!(),
+        RepositoryHost::GitLab => {
+            format!(
+                "https://gitlab.com/{repo_owner}/{repo_name}/-/merge_requests/{id}"
+            )
+        }
+        RepositoryHost::Infer => unreachable!(),
+    };
+    Link {
+        shorthand: link,
+        full: full_link,
+        is_pull_request: true,
+    }
+}
+
 /// Determines the link for the changelog entry. If the entry name is not a
 /// number, it tries to guess from the pull requests and asks the user.
 fn resolve_changelog_pr_interactive(
     name: &str,
     contents: &str,
     pull_requests: &[PullRequest],
-) -> Result<String> {
+    repo_owner: &str,
+    repo_name: &str,
+    host: RepositoryHost,
+    use_short_links: bool,
+) -> Result<Link> {
     if let Ok(id) = name.parse::<u64>() {
-        if let Some(link) = pull_requests
+        let link = if let Some(link) = pull_requests
             .iter()
             .find(|pr| pr.id == id)
             .map(|pr| pr.link.clone())
@@ -405,7 +453,7 @@ fn resolve_changelog_pr_interactive(
                 "✓ {}",
                 format!("Processing changelog for {}", link).green()
             );
-            Ok(link)
+            link
         } else {
             prompt(
                 || {
@@ -419,8 +467,15 @@ fn resolve_changelog_pr_interactive(
                     )
                 },
                 "y",
-            )
-        }
+            )?
+        };
+        Ok(make_pull_request_link(
+            id.to_string(),
+            link,
+            host,
+            repo_owner,
+            repo_name,
+        ))
     } else {
         eprintln!(
             "╭─ {}:",
@@ -441,7 +496,7 @@ fn resolve_changelog_pr_interactive(
             }
             eprintln!("│");
         }
-        prompt(
+        let full_link = prompt(
             || {
                 eprint!("╰─ Please enter the desired link (can also be a link like !30 in GitLab): ")
             },
@@ -453,12 +508,81 @@ fn resolve_changelog_pr_interactive(
                 )
             },
             None,
-        )
+        )?;
+        if let Some(id) = match host {
+            RepositoryHost::GitHub => todo!(),
+            RepositoryHost::GitLab => full_link.strip_prefix("!"),
+            RepositoryHost::Infer => unreachable!(),
+        } {
+            Ok(make_pull_request_link(
+                id.to_string(),
+                full_link,
+                host,
+                repo_owner,
+                repo_name,
+            ))
+        } else {
+            let shorthand = prompt(
+                || {
+                    eprint!("   Please provide the markdown shorthand name for the link: ")
+                },
+                |value| !value.is_empty(),
+                |_| {},
+                None,
+            )?;
+            Ok(Link {
+                shorthand,
+                full: full_link,
+                is_pull_request: false,
+            })
+        }
     }
 }
 
+fn load_config(path: Utf8PathBuf) -> Result<Config> {
+    let contents = fs::read_to_string(&path)
+        .into_diagnostic()
+        .wrap_err(format!("Failed to read config file from {}", path))?;
+    toml::from_str(&contents).map_err(|cause| {
+        let labels = cause
+            .span()
+            .into_iter()
+            .map(|span| LabeledSpan::at(span, cause.to_string()))
+            .collect::<Vec<_>>();
+        miette!(
+            code = "load_config::toml_error",
+            labels = labels,
+            "Failed to parse config file"
+        )
+        .with_source_code(
+            NamedSource::new(path, contents).with_language("toml"),
+        )
+    })
+}
+
 fn main() -> Result<()> {
-    let opts = argh::from_env::<Opts>();
+    let mut opts = argh::from_env::<Opts>();
+
+    let (format, short_links) = if let Some(config_path) =
+        opts.config.or_else(|| {
+            if Utf8Path::new("mergelog.toml").is_file() {
+                Some(Utf8Path::new("mergelog.toml").to_path_buf())
+            } else {
+                None
+            }
+        }) {
+        let config = load_config(config_path.clone())?;
+        eprintln!(
+            "✓ {}",
+            format!("Loaded config from {}", config_path).green()
+        );
+        if opts.section.is_empty() {
+            opts.section = config.sections;
+        }
+        (config.format, config.short_links)
+    } else {
+        (default_config_format(), false)
+    };
 
     // TODO: bad if there are escaped characters
     let command_as_string = env::args().collect::<Vec<_>>().join(" ");
@@ -523,7 +647,7 @@ fn main() -> Result<()> {
         specified => specified,
     };
 
-    let (owner, name) = parse_owner_and_name(repo_url, host)?;
+    let (repo_owner, repo_name) = parse_owner_and_name(repo_url, host)?;
 
     let spinner = ProgressBar::new_spinner()
         .with_message("Fetching information from remote repository")
@@ -532,14 +656,14 @@ fn main() -> Result<()> {
                 .tick_chars("⠁⠁⠉⠙⠚⠒⠂⠂⠒⠲⠴⠤⠄⠄⠤⠠⠠⠤⠦⠖⠒⠐⠐⠒⠓⠋⠉⠈⠈✓"),
         );
     spinner.enable_steady_tick(Duration::from_millis(100));
-    let pull_requests = fetch_merge_requests(owner, name, host)?;
+    let pull_requests = fetch_merge_requests(&repo_owner, &repo_name, host)?;
     spinner.finish_with_message(
         "Fetched information from remote repository"
             .green()
             .to_string(),
     );
 
-    let mut sections = HashMap::<String, (u8, Vec<(String, String)>)>::new();
+    let mut sections = HashMap::<String, (u8, Vec<(String, Link)>)>::new();
     let mut current_section = None;
 
     let arena = comrak::Arena::new();
@@ -568,6 +692,10 @@ fn main() -> Result<()> {
                     file_stem,
                     &changelog_contents,
                     &pull_requests,
+                    &repo_owner,
+                    &repo_name,
+                    host,
+                    short_links,
                 )?;
 
                 for node in comrak::parse_document(
@@ -624,22 +752,38 @@ fn main() -> Result<()> {
         }
     }
 
+    let mut short_links_set = HashSet::new();
     for (i, section) in opts.section.into_iter().enumerate() {
         if i > 0 {
             println!();
         }
         if let Some((level, contents)) = sections.get_mut(&section) {
-            contents.sort_by(|lhs, rhs| lhs.1.cmp(&rhs.1));
+            contents.sort_by(|lhs, rhs| lhs.1.shorthand.cmp(&rhs.1.shorthand));
             println!("{} {}", "#".repeat(*level as usize), section);
             for (content, link) in contents {
                 let item = content.trim();
                 let item = item.strip_prefix("-").unwrap_or(item).trim();
-                if opts.link_at_start {
-                    println!("- ({}) {}", link, item);
-                } else {
-                    println!("- {} ({})", item, link);
+                println!(
+                    "- {}",
+                    format
+                        .replace("{link_short}", &link.shorthand)
+                        .replace("{link}", &link.full)
+                        .replace("{item}", item)
+                );
+                if short_links {
+                    short_links_set
+                        .insert((link.shorthand.clone(), link.full.clone()));
                 }
             }
+        }
+    }
+    if !short_links_set.is_empty() {
+        println!();
+        let mut short_links_list =
+            short_links_set.into_iter().collect::<Vec<_>>();
+        short_links_list.sort();
+        for (link, full_link) in short_links_list {
+            println!("[{link}]: {full_link}");
         }
     }
 

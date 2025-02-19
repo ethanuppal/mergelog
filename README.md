@@ -19,10 +19,12 @@ cargo install mergelog
 mergelog my/changelog/directory
 ```
 
+## Usage
+
 Here's the full `--help` output:
 
 ```
-Usage: mergelog <changelog_directory> [--repo <repo>] [--host <host>] [-s <section...>] [--link-at-start]
+Usage: mergelog <changelog_directory> [--repo <repo>] [--host <host>] [-s <section...>] [--config <config>]
 
 Merges changelog files into a single changelog
 
@@ -35,7 +37,26 @@ Options:
                     omit to infer from the current repo
   --host            the repository host; omit to infer from the repo URL
   -s, --section     changelog sections in order
-  --link-at-start   whether the link to pull requests in the changelog should be
-                    put at the start of each entry
+  --config          path to optional config file
   --help, help      display usage information
 ```
+
+## Config
+
+You can pass `--config <path>` or create a `mergelog.toml` in the current
+directory to configure the output further.
+
+```toml
+# example
+sections = ["Added", ...]
+format = "{item} [{link_short}]({link})"
+short-links = false
+```
+
+- If any `--section`s are passed on the CLI, they will override any given in the
+config.
+- The `format` option string-replaces the keys `{link}`, `{link_short}`, and
+`{item}`.
+- The `short-links` option is perhaps confusingly named; it extracts out the
+links into a list at the end, so you can use `"{item} [{short_link}]"` as your
+format, for example.
