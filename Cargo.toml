@@ -2,7 +2,7 @@
 name = "mergelog"
 description = "Magically merge multiple changelog files into one"
 authors = ["Ethan Uppal"]
-version = "0.1.2"
+version = "0.2"
 edition = "2021"
 license = "GPL-3.0"
 readme = "README.md"
