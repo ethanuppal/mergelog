@@ -1,5 +1,11 @@
 # mergelog
 
+[![Code Style Badge](https://github.com/ethanuppal/mergelog/actions/workflows/lint.yaml/badge.svg)](https://github.com/ethanuppal/mergelog/blob/main/.github/workflows/lint.yaml)
+[![cargo-deny badge](https://github.com/ethanuppal/mergelog/actions/workflows/cargo-deny.yaml/badge.svg)](https://github.com/ethanuppal/mergelog/blob/main/.github/workflows/cargo-deny.yaml)
+[![Crates.io Version](https://img.shields.io/crates/v/mergelog)](https://crates.io/crates/mergelog)
+[![docs.rs](https://img.shields.io/docsrs/mergelog)](https://docs.rs/mergelog/latest/mergelog)
+[![Crates.io License](https://img.shields.io/crates/l/mergelog)](./LICENSE)
+
 > [!CAUTION]
 > `mergelog` only supports GitLab now, but adding GitHub should be trivial.
 
