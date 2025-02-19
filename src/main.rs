@@ -460,14 +460,32 @@ fn resolve_changelog_pr_interactive(
 fn main() -> Result<()> {
     let opts = argh::from_env::<Opts>();
 
+    // TODO: bad if there are escaped characters
+    let command_as_string = env::args().collect::<Vec<_>>().join(" ");
+
+    if !opts.changelog_directory.is_dir() {
+        let dir_string = opts.changelog_directory.as_str();
+        let start = command_as_string
+            .find(dir_string)
+            .expect("TODO: handle escapes. you get no pretty error but TLDR the changelog directory you specified does not exist :(");
+        return Err(miette!(
+            code = "main::missing_changelogs",
+            labels = vec![LabeledSpan::at(
+                (start, dir_string.len()),
+                "Directory specified here"
+            )],
+            "Changelog directory specified either does not exist or is not a directory"
+        )
+        .with_source_code(command_as_string));
+    }
+
     if opts.section.is_empty() {
-        let command = env::args().collect::<Vec<_>>().join(" ");
         return Err(miette!(
             code = "main::missing_sections",
-            labels = vec![LabeledSpan::at(0..command.len(), "Missing section option(s)")],
+            labels = vec![LabeledSpan::at(0..command_as_string.len(), "Missing section option(s)")],
             help = "Provide a changelog section by passing the option `-s`/--section` multiple times, e.g., `-s Added`.\n\nThese sections correspond to markdown headings in the changelog files, and the order in which you pass the sections is the order in which they will be generated in the changelog.", 
             "No changelog sections provided"
-        ).with_source_code(command));
+        ).with_source_code(command_as_string));
     }
 
     let repo_url = if let Some(repo_url) = opts.repo_url {
@@ -617,9 +635,9 @@ fn main() -> Result<()> {
                 let item = content.trim();
                 let item = item.strip_prefix("-").unwrap_or(item).trim();
                 if opts.link_at_start {
-                    println!(" - ({}) {}", link, item);
+                    println!("- ({}) {}", link, item);
                 } else {
-                    println!(" - {} ({})", item, link);
+                    println!("- {} ({})", item, link);
                 }
             }
         }
