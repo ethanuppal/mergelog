@@ -19,6 +19,11 @@ cargo install mergelog
 mergelog my/changelog/directory
 ```
 
+I'm demoing it on [Spade](http://gitlab.com/spade-lang/spade), a programming
+langauge I contribute to:
+
+https://github.com/user-attachments/assets/9d8bef51-0a6d-420e-860d-812dd872be87
+
 ## Usage
 
 Here's the full `--help` output:
