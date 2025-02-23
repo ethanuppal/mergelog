@@ -20,7 +20,7 @@ mergelog my/changelog/directory
 ```
 
 I'm demoing it on [Spade](http://gitlab.com/spade-lang/spade), a programming
-langauge I contribute to:
+language I contribute to:
 
 https://github.com/user-attachments/assets/9d8bef51-0a6d-420e-860d-812dd872be87
 
@@ -53,7 +53,7 @@ directory to configure the output further.
 
 ```toml
 # example
-sections = ["Added", ...]
+sections = ["Added", "Fixed"]
 format = "{item} [{link_short}]({link})"
 short-links = false
 ```
@@ -63,5 +63,5 @@ config.
 - The `format` option string-replaces the keys `{link}`, `{link_short}`, and
 `{item}`.
 - The `short-links` option is perhaps confusingly named; it extracts out the
-links into a list at the end, so you can use `"{item} [{short_link}]"` as your
+links into a list at the end, so you can use `"{item} [{link_short}]"` as your
 format, for example.

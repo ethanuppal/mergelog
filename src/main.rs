@@ -406,7 +406,6 @@ fn guess_pull_request<'a>(
 struct Link {
     shorthand: String,
     full: String,
-    is_pull_request: bool,
 }
 
 fn make_pull_request_link(
@@ -428,7 +427,6 @@ fn make_pull_request_link(
     Link {
         shorthand: link,
         full: full_link,
-        is_pull_request: true,
     }
 }
 
@@ -441,7 +439,6 @@ fn resolve_changelog_pr_interactive(
     repo_owner: &str,
     repo_name: &str,
     host: RepositoryHost,
-    use_short_links: bool,
 ) -> Result<Link> {
     if let Ok(id) = name.parse::<u64>() {
         let link = if let Some(link) = pull_requests
@@ -533,7 +530,6 @@ fn resolve_changelog_pr_interactive(
             Ok(Link {
                 shorthand,
                 full: full_link,
-                is_pull_request: false,
             })
         }
     }
@@ -695,7 +691,6 @@ fn main() -> Result<()> {
                     &repo_owner,
                     &repo_name,
                     host,
-                    short_links,
                 )?;
 
                 for node in comrak::parse_document(
